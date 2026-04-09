@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flashair } from '../flashair';
   import type { FlashAirFileEntry } from '../flashair';
+  import CachedThumbnail from './CachedThumbnail.svelte';
 
   interface Props {
     images: FlashAirFileEntry[];
@@ -29,12 +30,7 @@
             onclick={() => onSelect(file)}
           >
             {#if thumbUrl}
-              <img
-                src={thumbUrl}
-                alt={file.filename}
-                class="w-full aspect-square rounded object-cover"
-                loading="lazy"
-              />
+              <CachedThumbnail path={file.path} alt={file.filename} />
             {:else}
               <div class="w-full aspect-square rounded bg-base-300 flex items-center justify-center">
                 <span class="text-lg">🖼️</span>

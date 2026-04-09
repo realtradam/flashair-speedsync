@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flashair } from '../flashair';
   import type { FlashAirFileEntry } from '../flashair';
+  import { imageCache } from '../cache';
 
   interface Props {
     file: FlashAirFileEntry | undefined;
@@ -277,8 +278,23 @@
     const url = flashair.thumbnailUrl(entry.path);
     if (url === undefined) return;
 
+    // Try cache first
+    const cached = await imageCache.get('thumbnail', entry.path);
+    if (cached !== undefined) {
+      const blobUrl = URL.createObjectURL(cached.blob);
+      rawThumbnailUrl = blobUrl;
+      thumbnailBlobUrl = blobUrl;
+
+      if (cached.meta !== undefined && cached.meta.width !== undefined && cached.meta.height !== undefined && cached.meta.width > 0 && cached.meta.height > 0) {
+        imageAspectRatio = `${String(cached.meta.width)} / ${String(cached.meta.height)}`;
+      }
+      return;
+    }
+
     try {
       const { blob, meta } = await flashair.fetchThumbnail(entry.path);
+      // Store in cache (fire-and-forget)
+      void imageCache.put('thumbnail', entry.path, blob, meta);
       const blobUrl = URL.createObjectURL(blob);
       rawThumbnailUrl = blobUrl;
       thumbnailBlobUrl = blobUrl;
@@ -310,6 +326,17 @@
     progress = 0;
     loadError = undefined;
 
+    // Try cache first
+    const cached = await imageCache.get('full', entry.path);
+    if (cached !== undefined && !abort.signal.aborted) {
+      const objectUrl = URL.createObjectURL(cached.blob);
+      rawObjectUrl = objectUrl;
+      fullObjectUrl = objectUrl;
+      progress = 1;
+      downloading = false;
+      return;
+    }
+
     const url = flashair.fileUrl(entry.path);
     const totalBytes = entry.size;
 
@@ -323,6 +350,8 @@
       if (reader === undefined) {
         const blob = await res.blob();
         if (abort.signal.aborted) return;
+        // Store in cache (fire-and-forget)
+        void imageCache.put('full', entry.path, blob);
         const objectUrl = URL.createObjectURL(blob);
         rawObjectUrl = objectUrl;
         fullObjectUrl = objectUrl;
@@ -345,6 +374,8 @@
       if (abort.signal.aborted) return;
 
       const blob = new Blob(chunks);
+      // Store in cache (fire-and-forget)
+      void imageCache.put('full', entry.path, blob);
       const objectUrl = URL.createObjectURL(blob);
       rawObjectUrl = objectUrl;
       fullObjectUrl = objectUrl;

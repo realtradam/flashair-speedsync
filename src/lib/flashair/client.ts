@@ -77,6 +77,9 @@ function parseFileList(text: string): FlashAirFileEntry[] {
 /** Known image extensions the FlashAir thumbnail.cgi supports (JPEG only). */
 const JPEG_EXTENSIONS = new Set(['.jpg', '.jpeg']);
 
+/** Regex matching common image file extensions. */
+const IMAGE_EXTENSIONS = /\.(jpe?g|png|bmp|gif)$/i;
+
 function isJpeg(filename: string): boolean {
   const ext = filename.slice(filename.lastIndexOf('.')).toLowerCase();
   return JPEG_EXTENSIONS.has(ext);
@@ -192,6 +195,42 @@ export const flashair = {
     };
 
     return { blob, meta };
+  },
+  /**
+   * Recursively list all image files on the card starting from a root directory.
+   * Returns files sorted by date, newest first.
+   */
+  async listAllImages(rootDir: string): Promise<FlashAirFileEntry[]> {
+    const allImages: FlashAirFileEntry[] = [];
+    const dirsToVisit: string[] = [rootDir];
+
+    while (dirsToVisit.length > 0) {
+      const dir = dirsToVisit.pop();
+      if (dir === undefined) break;
+
+      let entries: FlashAirFileEntry[];
+      try {
+        entries = await flashair.listFiles(dir);
+      } catch {
+        continue;
+      }
+
+      for (const entry of entries) {
+        if (entry.isDirectory) {
+          dirsToVisit.push(entry.path);
+        } else if (IMAGE_EXTENSIONS.test(entry.filename)) {
+          allImages.push(entry);
+        }
+      }
+    }
+
+    allImages.sort((a, b) => {
+      const dateCompare = b.rawDate - a.rawDate;
+      if (dateCompare !== 0) return dateCompare;
+      return b.rawTime - a.rawTime;
+    });
+
+    return allImages;
   },
 } as const;
 

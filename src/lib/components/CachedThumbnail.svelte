@@ -81,8 +81,8 @@
     />
     {#if cachePercent !== undefined && cachePercent < 100}
       <div class="absolute inset-0 flex items-center justify-center">
-        <div class="radial-progress text-primary bg-base-300/60 border-2 border-base-300/60" style:--value={cachePercent} style:--size="2.5rem" style:--thickness="3px" role="progressbar">
-          <span class="text-[0.6rem] font-bold text-primary-content drop-shadow">{cachePercent}%</span>
+        <div class="radial-progress text-primary bg-base-300/70 border-2 border-base-300/40" style:--value={cachePercent} style:--size="2.5rem" style:--thickness="3px" role="progressbar" aria-valuenow={cachePercent}>
+          <span class="text-[0.6rem] font-bold text-base-content drop-shadow">{cachePercent}%</span>
         </div>
       </div>
     {/if}

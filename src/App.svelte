@@ -218,9 +218,14 @@
 
   <!-- Right: Image list -->
 <div class="w-36 lg:w-40 shrink-0 border-l border-base-300 flex flex-col">
-    <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0 flex items-center overflow-hidden">
+    <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0 flex items-center gap-1.5 overflow-hidden">
       <span class="text-xs font-semibold whitespace-nowrap truncate">Photos {cachedCount}/{totalCount > 0 ? totalCount : images.length}</span>
-      <span class="ml-1.5 shrink-0 status status-secondary" class:status-ping={isAutoCaching}></span>
+      <span class="relative shrink-0 inline-flex">
+        {#if isAutoCaching}
+          <span class="status status-secondary animate-ping absolute"></span>
+        {/if}
+        <span class="status {isAutoCaching ? 'status-secondary' : 'status-neutral'}"></span>
+      </span>
     </div>
     <div class="flex-1 min-h-0">
       <ImageList {images} selectedPath={selectedFile?.path} onSelect={selectImage} {newImagePaths} onAnimationDone={handleAnimationDone} />

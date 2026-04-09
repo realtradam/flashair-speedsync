@@ -453,8 +453,8 @@
     </div>
   {:else}
     {#if downloading && progress < 1}
-      <div class="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
-        <div class="bg-base-100 rounded-box p-6 shadow-xl max-w-xs w-full mx-4">
+      <div class="absolute inset-0 z-10 flex items-center justify-center bg-base-300/80 backdrop-blur-sm">
+        <div class="bg-base-100 rounded-box p-4 shadow-xl max-w-xs w-full mx-4">
           <div class="flex items-center gap-2">
             <progress class="progress progress-primary flex-1" value={progressPercent} max="100"></progress>
             <span class="text-xs font-mono text-base-content/70 w-10 text-right">{progressPercent}%</span>

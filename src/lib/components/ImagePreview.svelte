@@ -26,12 +26,182 @@
   let rawObjectUrl: string | undefined;
   let rawThumbnailUrl: string | undefined;
 
+  // --- Zoom & pan state ---
+  let zoomLevel = $state(1); // user zoom: 1 = fit, >1 = zoomed in
+  let panX = $state(0);
+  let panY = $state(0);
+  let containerEl: HTMLDivElement | undefined;
+  let containerW = $state(0);
+  let containerH = $state(0);
+
+  // Touch tracking for pinch-to-zoom and pan
+  let lastTouchDist = 0;
+  let lastTouchMidX = 0;
+  let lastTouchMidY = 0;
+  let isPinching = false;
+  let isPanning = false;
+  let lastPanX = 0;
+  let lastPanY = 0;
+
+  const MIN_ZOOM = 1;
+  const MAX_ZOOM = 10;
+
+  function resetZoom() {
+    zoomLevel = 1;
+    panX = 0;
+    panY = 0;
+  }
+
+  function clampPan() {
+    if (zoomLevel <= 1) {
+      panX = 0;
+      panY = 0;
+      return;
+    }
+    if (containerW === 0 || containerH === 0) return;
+    const maxPanX = (containerW * (zoomLevel - 1)) / 2;
+    const maxPanY = (containerH * (zoomLevel - 1)) / 2;
+    panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
+    panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
+  }
+
+  function handleWheel(e: WheelEvent) {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? 0.9 : 1.1;
+    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * delta));
+
+    if (containerEl !== undefined) {
+      const rect = containerEl.getBoundingClientRect();
+      const cursorX = e.clientX - rect.left - rect.width / 2;
+      const cursorY = e.clientY - rect.top - rect.height / 2;
+      const factor = newZoom / zoomLevel;
+      panX = cursorX - factor * (cursorX - panX);
+      panY = cursorY - factor * (cursorY - panY);
+    }
+
+    zoomLevel = newZoom;
+    clampPan();
+  }
+
+  function touchDist(t1: Touch, t2: Touch): number {
+    const dx = t1.clientX - t2.clientX;
+    const dy = t1.clientY - t2.clientY;
+    return Math.sqrt(dx * dx + dy * dy);
+  }
+
+  function handleTouchStart(e: TouchEvent) {
+    if (e.touches.length === 2) {
+      e.preventDefault();
+      isPinching = true;
+      isPanning = false;
+      const t0 = e.touches[0] as Touch;
+      const t1 = e.touches[1] as Touch;
+      lastTouchDist = touchDist(t0, t1);
+      lastTouchMidX = (t0.clientX + t1.clientX) / 2;
+      lastTouchMidY = (t0.clientY + t1.clientY) / 2;
+    } else if (e.touches.length === 1 && zoomLevel > 1) {
+      isPanning = true;
+      isPinching = false;
+      const t = e.touches[0] as Touch;
+      lastPanX = t.clientX;
+      lastPanY = t.clientY;
+    }
+  }
+
+  function handleTouchMove(e: TouchEvent) {
+    if (isPinching && e.touches.length === 2) {
+      e.preventDefault();
+      const t0 = e.touches[0] as Touch;
+      const t1 = e.touches[1] as Touch;
+      const dist = touchDist(t0, t1);
+      const midX = (t0.clientX + t1.clientX) / 2;
+      const midY = (t0.clientY + t1.clientY) / 2;
+
+      const factor = dist / lastTouchDist;
+      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * factor));
+
+      if (containerEl !== undefined) {
+        const rect = containerEl.getBoundingClientRect();
+        const cx = midX - rect.left - rect.width / 2;
+        const cy = midY - rect.top - rect.height / 2;
+        const sf = newZoom / zoomLevel;
+        panX = cx - sf * (cx - panX) + (midX - lastTouchMidX);
+        panY = cy - sf * (cy - panY) + (midY - lastTouchMidY);
+      }
+
+      zoomLevel = newZoom;
+      clampPan();
+
+      lastTouchDist = dist;
+      lastTouchMidX = midX;
+      lastTouchMidY = midY;
+    } else if (isPanning && e.touches.length === 1 && zoomLevel > 1) {
+      e.preventDefault();
+      const t = e.touches[0] as Touch;
+      panX += t.clientX - lastPanX;
+      panY += t.clientY - lastPanY;
+      clampPan();
+      lastPanX = t.clientX;
+      lastPanY = t.clientY;
+    }
+  }
+
+  function handleTouchEnd(e: TouchEvent) {
+    if (e.touches.length < 2) {
+      isPinching = false;
+    }
+    if (e.touches.length === 0) {
+      isPanning = false;
+    }
+    if (e.touches.length === 1 && zoomLevel > 1) {
+      isPanning = true;
+      const t = e.touches[0] as Touch;
+      lastPanX = t.clientX;
+      lastPanY = t.clientY;
+    }
+  }
+
+  // Track container size via ResizeObserver
+  $effect(() => {
+    const el = containerEl;
+    if (el === undefined) return;
+
+    const ro = new ResizeObserver((entries) => {
+      const entry = entries[0];
+      if (entry !== undefined) {
+        containerW = entry.contentRect.width;
+        containerH = entry.contentRect.height;
+      }
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  });
+
+  // Bind touch listeners with { passive: false } so we can preventDefault
+  $effect(() => {
+    const el = containerEl;
+    if (el === undefined) return;
+
+    el.addEventListener('touchstart', handleTouchStart, { passive: false });
+    el.addEventListener('touchmove', handleTouchMove, { passive: false });
+    el.addEventListener('touchend', handleTouchEnd, { passive: true });
+
+    return () => {
+      el.removeEventListener('touchstart', handleTouchStart);
+      el.removeEventListener('touchmove', handleTouchMove);
+      el.removeEventListener('touchend', handleTouchEnd);
+    };
+  });
+
   $effect(() => {
     const currentFile = file;
     if (currentFile === undefined) {
       cleanup();
       return;
     }
+
+    // Reset zoom on file change
+    resetZoom();
 
     // Clear stale state synchronously before async loads
     if (rawThumbnailUrl !== undefined) {
@@ -67,6 +237,7 @@
     progress = 0;
     downloading = false;
     loadError = undefined;
+    resetZoom();
   }
 
   async function loadThumbnail(entry: FlashAirFileEntry) {
@@ -157,9 +328,17 @@
 
   let progressPercent = $derived(Math.round(progress * 100));
   let showThumbnail = $derived(fullObjectUrl === undefined && thumbnailBlobUrl !== undefined);
+  let imageTransform = $derived(
+    `translate(${String(panX)}px, ${String(panY)}px) scale(${String(zoomLevel)})`
+  );
 </script>
 
-<div class="h-full flex items-center justify-center bg-base-300 relative">
+<!-- svelte-ignore a11y_no_static_element_interactions -->
+<div
+  class="h-full flex items-center justify-center bg-base-300 relative overflow-hidden touch-none"
+  bind:this={containerEl}
+  onwheel={handleWheel}
+>
   {#if file === undefined}
     <div class="text-base-content/40 text-center p-8">
       <p class="text-lg">Select a photo to preview</p>
@@ -171,8 +350,8 @@
     </div>
   {:else}
     {#if downloading && progress < 1}
-      <div class="absolute inset-x-0 top-0 z-10 p-3">
-        <div class="max-w-xs mx-auto">
+      <div class="absolute inset-0 z-10 flex items-center justify-center bg-black/50">
+        <div class="bg-base-100 rounded-box p-6 shadow-xl max-w-xs w-full mx-4">
           <div class="flex items-center gap-2">
             <progress class="progress progress-primary flex-1" value={progressPercent} max="100"></progress>
             <span class="text-xs font-mono text-base-content/70 w-10 text-right">{progressPercent}%</span>
@@ -185,7 +364,10 @@
         <img
           src={fullObjectUrl}
           alt={file.filename}
-          class="max-w-full max-h-full object-contain"
+          class="max-w-full max-h-full object-contain will-change-transform"
+          style:transform={imageTransform}
+          style:transform-origin="center center"
+          draggable="false"
         />
       {/key}
     {:else if showThumbnail}
@@ -197,6 +379,7 @@
           src={thumbnailBlobUrl}
           alt={file.filename}
           class="w-full h-full object-cover blur-lg"
+          draggable="false"
         />
       </div>
     {:else}

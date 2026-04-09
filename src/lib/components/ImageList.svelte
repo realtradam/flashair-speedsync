@@ -23,7 +23,7 @@
         {@const isSelected = file.path === selectedPath}
         <li>
           <button
-            class="flex items-center gap-2 w-full rounded-lg p-1.5 text-left transition-colors {isSelected
+            class="flex flex-col w-full rounded-lg p-1.5 text-left transition-colors {isSelected
               ? 'bg-primary text-primary-content'
               : 'hover:bg-base-200'}"
             onclick={() => onSelect(file)}
@@ -32,17 +32,18 @@
               <img
                 src={thumbUrl}
                 alt={file.filename}
-                class="w-12 h-12 rounded object-cover shrink-0"
+                class="w-full aspect-square rounded object-cover"
                 loading="lazy"
               />
             {:else}
-              <div class="w-12 h-12 rounded bg-base-300 flex items-center justify-center shrink-0">
+              <div class="w-full aspect-square rounded bg-base-300 flex items-center justify-center">
                 <span class="text-lg">🖼️</span>
               </div>
             {/if}
-            <div class="min-w-0 flex-1">
+            <div class="min-w-0 w-full mt-1">
               <p class="text-xs font-medium truncate">{file.filename}</p>
-              <p class="text-xs opacity-60">{file.date.toLocaleString()}</p>
+              <p class="text-xs opacity-60">{file.date.toLocaleDateString()}</p>
+              <p class="text-xs opacity-60">{file.date.toLocaleTimeString()}</p>
             </div>
           </button>
         </li>

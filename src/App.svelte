@@ -62,7 +62,7 @@
   </div>
 
   <!-- Right: Image list -->
-  <div class="w-72 lg:w-80 shrink-0 border-l border-base-300 flex flex-col">
+<div class="w-36 lg:w-40 shrink-0 border-l border-base-300 flex flex-col">
     <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
       <span class="text-sm font-semibold">Photos ({images.length})</span>
     </div>
@@ -74,16 +74,16 @@
 
 <!-- FAB Flower: bottom-right -->
 <div class="fab fab-flower">
-  <div tabindex="0" class="btn btn-lg btn-circle btn-neutral">
+  <div tabindex="0" class="btn btn-lg btn-circle btn-primary">
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
     </svg>
   </div>
   <div class="fab-close">
-    <span class="btn btn-circle btn-lg btn-neutral">✕</span>
+    <span class="btn btn-circle btn-lg btn-secondary">✕</span>
   </div>
   <!-- Dark mode toggle -->
-  <button class="btn btn-lg btn-circle btn-neutral" onclick={() => (isDark = !isDark)}>
+  <button class="btn btn-lg btn-circle btn-secondary" onclick={() => (isDark = !isDark)}>
     {#if isDark}
       <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
         <path stroke-linecap="round" stroke-linejoin="round" d="M12 3v2.25m6.364.386-1.591 1.591M21 12h-2.25m-.386 6.364-1.591-1.591M12 18.75V21m-4.773-4.227-1.591 1.591M5.25 12H3m4.227-4.773L5.636 5.636M15.75 12a3.75 3.75 0 1 1-7.5 0 3.75 3.75 0 0 1 7.5 0Z" />
@@ -95,7 +95,7 @@
     {/if}
   </button>
   <!-- Refresh -->
-  <button class="btn btn-lg btn-circle btn-neutral" onclick={() => loadAllImages()}>
+  <button class="btn btn-lg btn-circle btn-secondary" onclick={() => loadAllImages()}>
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12a7.5 7.5 0 0 1 12.57-5.55L19.5 8.87" />
       <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 4.5v4.37h-4.37" />

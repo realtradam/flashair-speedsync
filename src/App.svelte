@@ -6,6 +6,7 @@
   import { autoCacheService } from './lib/cache';
   import ImageList from './lib/components/ImageList.svelte';
   import ImagePreview from './lib/components/ImagePreview.svelte';
+  import CacheDebug from './lib/components/CacheDebug.svelte';
 
   let images = $state<FlashAirFileEntry[]>([]);
   let selectedFile = $state<FlashAirFileEntry | undefined>(undefined);
@@ -303,3 +304,5 @@
     </form>
   </dialog>
 {/if}
+
+<CacheDebug />

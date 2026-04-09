@@ -224,26 +224,36 @@
     };
   });
 
+  /**
+   * The path currently being loaded. Used to detect stale async results
+   * without relying on the AbortController (which the $effect cleanup
+   * may fire prematurely if Svelte re-schedules the effect).
+   */
+  let activePath: string | undefined;
+
   $effect(() => {
     const currentFile = file;
     if (currentFile === undefined) {
+      activePath = undefined;
       cleanup();
       return;
     }
 
+    // Track which path we are loading so async callbacks can detect staleness.
+    activePath = currentFile.path;
+
     // Reset zoom on file change
     resetZoom();
 
-    // Clear stale state synchronously before async loads
-    imgNaturalW = 0;
-    imgNaturalH = 0;
+    // Revoke previous thumbnail blob URL (plain let, not $state)
     if (rawThumbnailUrl !== undefined) {
       URL.revokeObjectURL(rawThumbnailUrl);
       rawThumbnailUrl = undefined;
     }
-    thumbnailBlobUrl = undefined;
-    imageAspectRatio = '3 / 2';
 
+    // Kick off async loaders — they handle most $state writes internally.
+    // resetZoom() above writes to $state (zoomLevel, panX, panY) but those
+    // are never read in this $effect body, so they don't add dependencies.
     loadThumbnail(currentFile);
     loadFullImage(currentFile);
 
@@ -282,11 +292,18 @@
   }
 
   async function loadThumbnail(entry: FlashAirFileEntry) {
+    // Reset thumbnail state at the start of each load
+    thumbnailBlobUrl = undefined;
+    imageAspectRatio = '3 / 2';
+
     const url = flashair.thumbnailUrl(entry.path);
     if (url === undefined) return;
 
     // Try cache first
     const cached = await imageCache.get('thumbnail', entry.path);
+    // Check staleness after await
+    if (activePath !== entry.path) return;
+
     if (cached !== undefined) {
       const blobUrl = URL.createObjectURL(cached.blob);
       rawThumbnailUrl = blobUrl;
@@ -300,6 +317,8 @@
 
     try {
       const { blob, meta } = await flashair.fetchThumbnail(entry.path);
+      // Check staleness after await
+      if (activePath !== entry.path) return;
       // Store in cache (fire-and-forget)
       void imageCache.put('thumbnail', entry.path, blob, meta);
       const blobUrl = URL.createObjectURL(blob);
@@ -315,11 +334,14 @@
   }
 
   async function loadFullImage(entry: FlashAirFileEntry) {
+    // Reset state at the start of each load
     if (rawObjectUrl !== undefined) {
       URL.revokeObjectURL(rawObjectUrl);
       rawObjectUrl = undefined;
     }
     fullObjectUrl = undefined;
+    imgNaturalW = 0;
+    imgNaturalH = 0;
     progress = 0;
     loadError = undefined;
 
@@ -331,7 +353,11 @@
 
     // Try cache first — before setting downloading=true to avoid flicker
     const cached = await imageCache.get('full', entry.path);
-    if (cached !== undefined && !abort.signal.aborted) {
+    // Use activePath for staleness: the abort signal may have been tripped by
+    // a Svelte effect re-schedule even though the user didn't change images.
+    if (activePath !== entry.path) return;
+
+    if (cached !== undefined) {
       const objectUrl = URL.createObjectURL(cached.blob);
       rawObjectUrl = objectUrl;
       fullObjectUrl = objectUrl;
@@ -358,7 +384,7 @@
       const reader = res.body?.getReader();
       if (reader === undefined) {
         const blob = await res.blob();
-        if (abort.signal.aborted) return;
+        if (abort.signal.aborted || activePath !== entry.path) return;
         // Store in cache (fire-and-forget)
         void imageCache.put('full', entry.path, blob);
         autoCacheService.markCached(entry.path);
@@ -382,7 +408,7 @@
         progress = totalBytes > 0 ? received / totalBytes : 0;
       }
 
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted || activePath !== entry.path) return;
 
       const blob = new Blob(chunks);
       // Store in cache (fire-and-forget)
@@ -393,10 +419,10 @@
       fullObjectUrl = objectUrl;
       progress = 1;
     } catch (e) {
-      if (abort.signal.aborted) return;
+      if (abort.signal.aborted || activePath !== entry.path) return;
       loadError = e instanceof Error ? e.message : String(e);
     } finally {
-      if (!abort.signal.aborted) {
+      if (!abort.signal.aborted && activePath === entry.path) {
         downloading = false;
         autoCacheService.resumeAfterUserDownload();
       }

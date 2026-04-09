@@ -9,6 +9,8 @@
     idbEntries: number;
     idbBytes: number;
     idbError: string | undefined;
+    idbLastWriteError: string | undefined;
+    idbWriteErrorCount: number;
   }
 
   let stats = $state<CacheStats | undefined>(undefined);
@@ -24,11 +26,44 @@
     return `${val.toFixed(1)} ${sizes[i]}`;
   }
 
+  let storageEstimate = $state<{ usage: number; quota: number } | undefined>(undefined);
+  let storageError = $state<string | undefined>(undefined);
+
   async function refresh() {
     refreshing = true;
     try {
       stats = await imageCache.getStats();
     } catch { /* ignore */ }
+
+    // Try standard Storage API first, then webkit fallback
+    storageEstimate = undefined;
+    storageError = undefined;
+    try {
+      if (navigator.storage && navigator.storage.estimate) {
+        const est = await navigator.storage.estimate();
+        storageEstimate = { usage: est.usage ?? 0, quota: est.quota ?? 0 };
+      } else if ('webkitTemporaryStorage' in navigator) {
+        // Chrome HTTP fallback
+        const wk = (navigator as Record<string, unknown>)['webkitTemporaryStorage'] as
+          { queryUsageAndQuota: (ok: (u: number, q: number) => void, err: (e: unknown) => void) => void } | undefined;
+        if (wk !== undefined) {
+          const result = await new Promise<{ usage: number; quota: number }>((resolve, reject) => {
+            wk.queryUsageAndQuota(
+              (usage, quota) => resolve({ usage, quota }),
+              (err) => reject(err),
+            );
+          });
+          storageEstimate = result;
+        } else {
+          storageError = 'Storage API not available (HTTP origin)';
+        }
+      } else {
+        storageError = 'Storage API not available';
+      }
+    } catch (e) {
+      storageError = e instanceof Error ? e.message : String(e);
+    }
+
     refreshing = false;
   }
 
@@ -65,6 +100,12 @@
         {:else}
           <div>Entries: <span class="text-info">{stats.idbEntries}</span></div>
           <div>Size: <span class="text-info">{formatBytes(stats.idbBytes)}</span></div>
+          {#if stats.idbWriteErrorCount > 0}
+            <div class="text-error mt-1">❌ {stats.idbWriteErrorCount} write errors</div>
+            {#if stats.idbLastWriteError !== undefined}
+              <div class="text-error text-[10px] break-all">{stats.idbLastWriteError}</div>
+            {/if}
+          {/if}
           <div class="mt-1">
             {#if stats.idbEntries === stats.entries}
               <span class="text-success">✅ In sync with memory</span>
@@ -74,6 +115,24 @@
               <span class="text-info">IDB has {stats.idbEntries - stats.entries} extra (pre-loaded)</span>
             {/if}
           </div>
+        {/if}
+      </div>
+      <!-- Storage Quota -->
+      <div class="border-t border-base-300 pt-2">
+        <div class="font-semibold text-accent">Storage Quota</div>
+        {#if storageEstimate !== undefined}
+          <div>Used: <span class="text-info">{formatBytes(storageEstimate.usage)}</span> / {formatBytes(storageEstimate.quota)}</div>
+          {#if storageEstimate.quota > 0}
+            {@const pct = (storageEstimate.usage / storageEstimate.quota * 100)}
+            <div>
+              <progress class="progress progress-primary w-full h-2" value={pct} max="100"></progress>
+              <span class:text-error={pct > 90} class:text-warning={pct > 70 && pct <= 90}>{pct.toFixed(1)}%</span>
+            </div>
+          {/if}
+        {:else if storageError !== undefined}
+          <div class="text-warning">{storageError}</div>
+        {:else}
+          <div class="text-base-content/50">Querying…</div>
         {/if}
       </div>
     </div>

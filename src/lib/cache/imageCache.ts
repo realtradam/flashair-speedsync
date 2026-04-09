@@ -109,6 +109,10 @@ async function idbGet(key: CacheKey): Promise<StoredRecord | undefined> {
   });
 }
 
+/** Last write error (if any) — exposed via getStats() for diagnostics. */
+let lastWriteError: string | undefined;
+let writeErrorCount = 0;
+
 /** Write a record to IndexedDB (best-effort). */
 async function idbPut(record: StoredRecord): Promise<void> {
   const db = await openDb();
@@ -119,9 +123,22 @@ async function idbPut(record: StoredRecord): Promise<void> {
       const tx = db.transaction(STORE_NAME, 'readwrite');
       const store = tx.objectStore(STORE_NAME);
       store.put(record);
-      tx.oncomplete = () => resolve();
-      tx.onerror = () => resolve();
-    } catch {
+      tx.oncomplete = () => {
+        lastWriteError = undefined;
+        resolve();
+      };
+      tx.onerror = () => {
+        const msg = tx.error?.message ?? 'unknown write error';
+        lastWriteError = msg;
+        writeErrorCount++;
+        console.warn(`[imageCache] IDB write failed: ${msg}`);
+        resolve();
+      };
+    } catch (e) {
+      const msg = e instanceof Error ? e.message : String(e);
+      lastWriteError = msg;
+      writeErrorCount++;
+      console.warn(`[imageCache] IDB write exception: ${msg}`);
       resolve();
     }
   });
@@ -280,6 +297,8 @@ export const imageCache = {
     idbEntries: number;
     idbBytes: number;
     idbError: string | undefined;
+    idbLastWriteError: string | undefined;
+    idbWriteErrorCount: number;
   }> {
     let fullCount = 0;
     let thumbCount = 0;
@@ -332,6 +351,8 @@ export const imageCache = {
       idbEntries,
       idbBytes,
       idbError,
+      idbLastWriteError: lastWriteError,
+      idbWriteErrorCount: writeErrorCount,
     };
   },
 

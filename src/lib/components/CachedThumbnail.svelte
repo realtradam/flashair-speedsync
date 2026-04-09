@@ -6,9 +6,10 @@
   interface Props {
     path: string;
     alt: string;
+    fileDate?: number;
   }
 
-  let { path, alt }: Props = $props();
+  let { path, alt, fileDate }: Props = $props();
 
   let blobUrl = $state<string | undefined>(undefined);
   let rawBlobUrl: string | undefined;
@@ -56,7 +57,7 @@
     try {
       const { blob, meta } = await flashair.fetchThumbnail(filePath);
       // Store in cache (fire-and-forget)
-      void imageCache.put('thumbnail', filePath, blob, meta);
+      void imageCache.put('thumbnail', filePath, blob, meta, fileDate);
       const url = URL.createObjectURL(blob);
       rawBlobUrl = url;
       blobUrl = url;

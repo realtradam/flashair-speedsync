@@ -40,7 +40,7 @@
             onclick={() => onSelect(file)}
           >
             {#if thumbUrl}
-              <CachedThumbnail path={file.path} alt={file.filename} />
+              <CachedThumbnail path={file.path} alt={file.filename} fileDate={file.date.getTime()} />
             {:else}
               <div class="w-full aspect-square rounded bg-base-300 flex items-center justify-center">
                 <span class="text-lg">🖼️</span>

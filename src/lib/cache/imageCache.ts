@@ -15,6 +15,8 @@ export interface CachedImage {
   readonly meta: ThumbnailMeta | undefined;
   /** Unix timestamp (ms) when this entry was stored. */
   readonly storedAt: number;
+  /** Unix timestamp (ms) of the file's date on the camera. Used for eviction priority. */
+  readonly fileDate: number | undefined;
 }
 
 type CacheKey = `${'thumbnail' | 'full'}:${string}`;
@@ -86,6 +88,7 @@ interface StoredRecord {
   readonly blob: Blob;
   readonly meta: ThumbnailMeta | undefined;
   readonly storedAt: number;
+  readonly fileDate: number | undefined;
 }
 
 /** Read a single record from IndexedDB. Returns undefined on any failure. */
@@ -162,8 +165,44 @@ async function idbDelete(key: CacheKey): Promise<void> {
   });
 }
 
-/** 30 days in milliseconds. */
-const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000;
+/** 3 days in milliseconds. */
+const CACHE_TTL_MS = 3 * 24 * 60 * 60 * 1000;
+
+/** Maximum total size of cached blobs (memory + IDB). 850 MB. */
+const MAX_CACHE_BYTES = 850 * 1024 * 1024;
+
+/** Current total bytes tracked in the memory cache. */
+let memoryCacheTotalBytes = 0;
+
+/**
+ * Evict the oldest entries from the cache until we're under the size budget.
+ * Evicts from both memory and IndexedDB.
+ */
+async function evictIfOverBudget(): Promise<void> {
+  if (memoryCacheTotalBytes <= MAX_CACHE_BYTES) return;
+
+  // Sort entries for eviction: oldest camera file date first.
+  // Full images before thumbnails (evict large items first for faster budget recovery).
+  // Entries without fileDate are evicted first (they're from older cache formats).
+  const entries = [...memoryCache.entries()].sort((a, b) => {
+    // Full images before thumbnails
+    if (a[1].kind !== b[1].kind) {
+      return a[1].kind === 'full' ? -1 : 1;
+    }
+    // Entries without fileDate go first (unknown = low priority)
+    const aDate = a[1].fileDate ?? 0;
+    const bDate = b[1].fileDate ?? 0;
+    // Oldest file date first (smallest timestamp = taken earliest = evict first)
+    return aDate - bDate;
+  });
+
+  for (const [key, entry] of entries) {
+    if (memoryCacheTotalBytes <= MAX_CACHE_BYTES) break;
+    memoryCacheTotalBytes -= entry.blob.size;
+    memoryCache.delete(key);
+    void idbDelete(key);
+  }
+}
 
 function isExpired(storedAt: number): boolean {
   return Date.now() - storedAt > CACHE_TTL_MS;
@@ -183,6 +222,7 @@ export const imageCache = {
     const mem = memoryCache.get(key);
     if (mem !== undefined) {
       if (isExpired(mem.storedAt)) {
+        memoryCacheTotalBytes -= mem.blob.size;
         memoryCache.delete(key);
         void idbDelete(key);
         return undefined;
@@ -204,9 +244,11 @@ export const imageCache = {
       blob: record.blob,
       meta: record.meta,
       storedAt: record.storedAt,
+      fileDate: record.fileDate,
     };
     // Promote to memory for future fast lookups
     memoryCache.set(key, cached);
+    memoryCacheTotalBytes += cached.blob.size;
     return cached;
   },
 
@@ -218,17 +260,31 @@ export const imageCache = {
    * instantly visible to subsequent get() calls.
    * IndexedDB persistence happens in the background.
    */
-  async put(kind: 'thumbnail' | 'full', path: string, blob: Blob, meta?: ThumbnailMeta): Promise<void> {
+  async put(
+    kind: 'thumbnail' | 'full',
+    path: string,
+    blob: Blob,
+    meta?: ThumbnailMeta,
+    fileDate?: number,
+  ): Promise<void> {
     const key = makeCacheKey(kind, path);
     const storedAt = Date.now();
 
-    const cached: CachedImage = { path, kind, blob, meta, storedAt };
+    const cached: CachedImage = { path, kind, blob, meta, storedAt, fileDate };
 
-    // Instant: write to memory
+    // Instant: write to memory (replace existing if present)
+    const existing = memoryCache.get(key);
+    if (existing !== undefined) {
+      memoryCacheTotalBytes -= existing.blob.size;
+    }
     memoryCache.set(key, cached);
+    memoryCacheTotalBytes += blob.size;
+
+    // Evict oldest entries if over budget
+    void evictIfOverBudget();
 
     // Background: persist to IndexedDB
-    const record: StoredRecord = { key, path, kind, blob, meta, storedAt };
+    const record: StoredRecord = { key, path, kind, blob, meta, storedAt, fileDate };
     await idbPut(record);
   },
 
@@ -237,6 +293,10 @@ export const imageCache = {
    */
   async delete(kind: 'thumbnail' | 'full', path: string): Promise<void> {
     const key = makeCacheKey(kind, path);
+    const existing = memoryCache.get(key);
+    if (existing !== undefined) {
+      memoryCacheTotalBytes -= existing.blob.size;
+    }
     memoryCache.delete(key);
     await idbDelete(key);
   },
@@ -248,6 +308,7 @@ export const imageCache = {
     // Prune in-memory
     for (const [key, entry] of memoryCache) {
       if (isExpired(entry.storedAt)) {
+        memoryCacheTotalBytes -= entry.blob.size;
         memoryCache.delete(key);
       }
     }
@@ -294,6 +355,7 @@ export const imageCache = {
     fullCount: number;
     thumbCount: number;
     totalBytes: number;
+    maxBytes: number;
     idbEntries: number;
     idbBytes: number;
     idbError: string | undefined;
@@ -348,6 +410,7 @@ export const imageCache = {
       fullCount,
       thumbCount,
       totalBytes,
+      maxBytes: MAX_CACHE_BYTES,
       idbEntries,
       idbBytes,
       idbError,
@@ -361,6 +424,7 @@ export const imageCache = {
    */
   async clear(): Promise<void> {
     memoryCache.clear();
+    memoryCacheTotalBytes = 0;
 
     const db = await openDb();
     if (db === undefined) return;

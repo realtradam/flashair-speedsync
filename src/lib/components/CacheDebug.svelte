@@ -1,11 +1,14 @@
 <script lang="ts">
   import { imageCache } from '../cache';
+  import { autoCacheService } from '../cache';
+  import { fly } from 'svelte/transition';
 
   interface CacheStats {
     entries: number;
     fullCount: number;
     thumbCount: number;
     totalBytes: number;
+    maxBytes: number;
     idbEntries: number;
     idbBytes: number;
     idbError: string | undefined;
@@ -14,8 +17,18 @@
   }
 
   let stats = $state<CacheStats | undefined>(undefined);
-  let refreshing = $state(false);
-  let collapsed = $state(false);
+
+  let idbBudgetPct = $derived(
+    stats !== undefined && stats.maxBytes > 0
+      ? (stats.idbBytes / stats.maxBytes * 100)
+      : 0
+  );
+
+  let budgetPct = $derived(
+    stats !== undefined && stats.maxBytes > 0
+      ? (stats.totalBytes / stats.maxBytes * 100)
+      : 0
+  );
 
   function formatBytes(bytes: number): string {
     if (bytes === 0) return '0 B';
@@ -26,45 +39,15 @@
     return `${val.toFixed(1)} ${sizes[i]}`;
   }
 
-  let storageEstimate = $state<{ usage: number; quota: number } | undefined>(undefined);
-  let storageError = $state<string | undefined>(undefined);
+  let downloadSpeed = $state(0);
 
   async function refresh() {
-    refreshing = true;
     try {
       stats = await imageCache.getStats();
-    } catch { /* ignore */ }
-
-    // Try standard Storage API first, then webkit fallback
-    storageEstimate = undefined;
-    storageError = undefined;
-    try {
-      if (navigator.storage && navigator.storage.estimate) {
-        const est = await navigator.storage.estimate();
-        storageEstimate = { usage: est.usage ?? 0, quota: est.quota ?? 0 };
-      } else if ('webkitTemporaryStorage' in navigator) {
-        // Chrome HTTP fallback
-        const wk = (navigator as Record<string, unknown>)['webkitTemporaryStorage'] as
-          { queryUsageAndQuota: (ok: (u: number, q: number) => void, err: (e: unknown) => void) => void } | undefined;
-        if (wk !== undefined) {
-          const result = await new Promise<{ usage: number; quota: number }>((resolve, reject) => {
-            wk.queryUsageAndQuota(
-              (usage, quota) => resolve({ usage, quota }),
-              (err) => reject(err),
-            );
-          });
-          storageEstimate = result;
-        } else {
-          storageError = 'Storage API not available (HTTP origin)';
-        }
-      } else {
-        storageError = 'Storage API not available';
-      }
-    } catch (e) {
-      storageError = e instanceof Error ? e.message : String(e);
+    } catch {
+      // ignore
     }
-
-    refreshing = false;
+    downloadSpeed = autoCacheService.downloadSpeed;
   }
 
   $effect(() => {
@@ -74,22 +57,33 @@
   });
 </script>
 
-<div class="fixed top-2 left-2 z-50 bg-base-100/95 backdrop-blur-sm rounded-box shadow-lg border border-base-300 p-3 text-xs font-mono max-w-80 pointer-events-auto">
-  <button
-    class="flex items-center justify-between w-full mb-1"
-    onclick={() => collapsed = !collapsed}
-  >
-    <span class="font-bold text-sm">Cache Debug</span>
-    <span class="text-base-content/50">{collapsed ? '▶' : '▼'}</span>
-  </button>
+<div
+  class="fixed top-2 left-2 z-50 bg-base-100/95 backdrop-blur-sm rounded-box shadow-lg border border-base-300 p-3 text-xs font-mono max-w-80 pointer-events-auto"
+  transition:fly={{ x: -320, duration: 250 }}
+>
+  <div class="font-bold text-sm mb-2">Cache Debug</div>
 
-  {#if !collapsed && stats !== undefined}
+  {#if stats !== undefined}
     <div class="space-y-2">
+      <!-- Download Speed -->
+      <div>
+        <span class="font-semibold">DL Speed:</span>
+        {#if downloadSpeed > 0}
+          <span class="text-info">{formatBytes(downloadSpeed)}/s</span>
+        {:else}
+          <span class="text-base-content/50">N/A</span>
+        {/if}
+      </div>
+
       <!-- Memory Cache -->
       <div>
         <div class="font-semibold text-primary">Memory Cache</div>
         <div>Entries: <span class="text-info">{stats.entries}</span> ({stats.fullCount} full, {stats.thumbCount} thumb)</div>
-        <div>Size: <span class="text-info">{formatBytes(stats.totalBytes)}</span></div>
+        <div>Size: <span class="text-info">{formatBytes(stats.totalBytes)}</span> / {formatBytes(stats.maxBytes)}</div>
+        <div>
+          <progress class="progress progress-primary w-full h-1.5" value={budgetPct} max="100"></progress>
+          <span class="text-[10px]" class:text-error={budgetPct > 90} class:text-warning={budgetPct > 70 && budgetPct <= 90}>{budgetPct.toFixed(1)}% of budget</span>
+        </div>
       </div>
 
       <!-- IndexedDB -->
@@ -99,46 +93,30 @@
           <div class="text-error">Error: {stats.idbError}</div>
         {:else}
           <div>Entries: <span class="text-info">{stats.idbEntries}</span></div>
-          <div>Size: <span class="text-info">{formatBytes(stats.idbBytes)}</span></div>
+          <div>Size: <span class="text-info">{formatBytes(stats.idbBytes)}</span> / {formatBytes(stats.maxBytes)}</div>
+          <div>
+            <progress class="progress progress-secondary w-full h-1.5" value={idbBudgetPct} max="100"></progress>
+            <span class="text-[10px]" class:text-error={idbBudgetPct > 90} class:text-warning={idbBudgetPct > 70 && idbBudgetPct <= 90}>{idbBudgetPct.toFixed(1)}% of budget</span>
+          </div>
           {#if stats.idbWriteErrorCount > 0}
-            <div class="text-error mt-1">❌ {stats.idbWriteErrorCount} write errors</div>
+            <div class="text-error mt-1">{stats.idbWriteErrorCount} write errors</div>
             {#if stats.idbLastWriteError !== undefined}
               <div class="text-error text-[10px] break-all">{stats.idbLastWriteError}</div>
             {/if}
           {/if}
           <div class="mt-1">
             {#if stats.idbEntries === stats.entries}
-              <span class="text-success">✅ In sync with memory</span>
+              <span class="text-success">In sync with memory</span>
             {:else if stats.idbEntries < stats.entries}
-              <span class="text-warning">⏳ IDB behind ({stats.entries - stats.idbEntries} pending)</span>
+              <span class="text-warning">IDB behind ({stats.entries - stats.idbEntries} pending)</span>
             {:else}
               <span class="text-info">IDB has {stats.idbEntries - stats.entries} extra (pre-loaded)</span>
             {/if}
           </div>
         {/if}
       </div>
-      <!-- Storage Quota -->
-      <div class="border-t border-base-300 pt-2">
-        <div class="font-semibold text-accent">Storage Quota</div>
-        {#if storageEstimate !== undefined}
-          <div>Used: <span class="text-info">{formatBytes(storageEstimate.usage)}</span> / {formatBytes(storageEstimate.quota)}</div>
-          {#if storageEstimate.quota > 0}
-            {@const pct = (storageEstimate.usage / storageEstimate.quota * 100)}
-            <div>
-              <progress class="progress progress-primary w-full h-2" value={pct} max="100"></progress>
-              <span class:text-error={pct > 90} class:text-warning={pct > 70 && pct <= 90}>{pct.toFixed(1)}%</span>
-            </div>
-          {/if}
-        {:else if storageError !== undefined}
-          <div class="text-warning">{storageError}</div>
-        {:else}
-          <div class="text-base-content/50">Querying…</div>
-        {/if}
-      </div>
     </div>
-  {:else if !collapsed}
-    <div class="text-base-content/50">
-      {#if refreshing}Loading…{:else}No data{/if}
-    </div>
+  {:else}
+    <div class="text-base-content/50">Loading…</div>
   {/if}
 </div>

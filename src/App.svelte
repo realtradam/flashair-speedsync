@@ -147,6 +147,7 @@
     newImagePaths = updated;
   }
 
+  let showDebug = $state(false);
   let saving = $state(false);
 
   async function saveToDevice() {
@@ -219,9 +220,7 @@
 <div class="w-36 lg:w-40 shrink-0 border-l border-base-300 flex flex-col">
     <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0 flex items-center overflow-hidden">
       <span class="text-xs font-semibold whitespace-nowrap truncate">Photos {cachedCount}/{totalCount > 0 ? totalCount : images.length}</span>
-      {#if isAutoCaching}
-        <span class="loading loading-spinner loading-xs ml-1 shrink-0"></span>
-      {/if}
+      <span class="ml-1.5 shrink-0 status status-secondary" class:status-ping={isAutoCaching}></span>
     </div>
     <div class="flex-1 min-h-0">
       <ImageList {images} selectedPath={selectedFile?.path} onSelect={selectImage} {newImagePaths} onAnimationDone={handleAnimationDone} />
@@ -231,14 +230,22 @@
 
 <!-- FAB Flower: bottom-right -->
 <div class="fab fab-flower">
-  <div tabindex="0" class="btn btn-lg btn-circle btn-primary">
+  <!-- Trigger: hamburger icon (shown when closed) -->
+  <div tabindex="0" class="btn btn-lg btn-circle btn-secondary">
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
       <path stroke-linecap="round" stroke-linejoin="round" d="M3.75 6.75h16.5M3.75 12h16.5m-16.5 5.25h16.5" />
     </svg>
   </div>
-  <div class="fab-close">
-    <span class="btn btn-circle btn-lg btn-secondary">✕</span>
-  </div>
+  <!-- Save/Download (center when opened) -->
+  <button class="btn btn-lg btn-circle btn-primary" onclick={() => void saveToDevice()} disabled={selectedFile === undefined || saving}>
+    {#if saving}
+      <span class="loading loading-spinner loading-sm"></span>
+    {:else}
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
+      </svg>
+    {/if}
+  </button>
   <!-- Delete -->
   <button class="btn btn-lg btn-circle btn-error" onclick={() => requestDelete()} disabled={selectedFile === undefined || deleting}>
     {#if deleting}
@@ -255,15 +262,11 @@
       <path stroke-linecap="round" stroke-linejoin="round" d="M20.25 7.5l-.625 10.632a2.25 2.25 0 0 1-2.247 2.118H6.622a2.25 2.25 0 0 1-2.247-2.118L3.75 7.5m6 4.125l2.25 2.25m0 0l2.25 2.25M12 13.875l2.25-2.25M12 13.875l-2.25 2.25M3.375 7.5h17.25c.621 0 1.125-.504 1.125-1.125v-1.5c0-.621-.504-1.125-1.125-1.125H3.375c-.621 0-1.125.504-1.125 1.125v1.5c0 .621.504 1.125 1.125 1.125Z" />
     </svg>
   </button>
-  <!-- Save to device -->
-  <button class="btn btn-lg btn-circle btn-secondary" onclick={() => void saveToDevice()} disabled={selectedFile === undefined || saving}>
-    {#if saving}
-      <span class="loading loading-spinner loading-sm"></span>
-    {:else}
-      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
-        <path stroke-linecap="round" stroke-linejoin="round" d="M3 16.5v2.25A2.25 2.25 0 0 0 5.25 21h13.5A2.25 2.25 0 0 0 21 18.75V16.5M16.5 12 12 16.5m0 0L7.5 12m4.5 4.5V3" />
-      </svg>
-    {/if}
+  <!-- Debug toggle -->
+  <button class="btn btn-lg btn-circle btn-info" onclick={() => showDebug = !showDebug}>
+    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
+      <path stroke-linecap="round" stroke-linejoin="round" d="m11.25 11.25.041-.02a.75.75 0 0 1 1.063.852l-.708 2.836a.75.75 0 0 0 1.063.853l.041-.021M21 12a9 9 0 1 1-18 0 9 9 0 0 1 18 0Zm-9-3.75h.008v.008H12V8.25Z" />
+    </svg>
   </button>
   <!-- Dark mode toggle -->
   <button class="btn btn-lg btn-circle btn-secondary" onclick={() => (isDark = !isDark)}>
@@ -276,15 +279,6 @@
         <path stroke-linecap="round" stroke-linejoin="round" d="M21.752 15.002A9.72 9.72 0 0 1 18 15.75c-5.385 0-9.75-4.365-9.75-9.75 0-1.33.266-2.597.748-3.752A9.753 9.753 0 0 0 3 11.25C3 16.635 7.365 21 12.75 21a9.753 9.753 0 0 0 9.002-5.998Z" />
       </svg>
     {/if}
-  </button>
-  <!-- Refresh -->
-  <button class="btn btn-lg btn-circle btn-secondary" onclick={() => loadAllImages()}>
-    <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
-      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 12a7.5 7.5 0 0 1 12.57-5.55L19.5 8.87" />
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 4.5v4.37h-4.37" />
-      <path stroke-linecap="round" stroke-linejoin="round" d="M19.5 12a7.5 7.5 0 0 1-12.57 5.55L4.5 15.13" />
-      <path stroke-linecap="round" stroke-linejoin="round" d="M4.5 19.5v-4.37h4.37" />
-    </svg>
   </button>
 </div>
 
@@ -305,4 +299,6 @@
   </dialog>
 {/if}
 
-<CacheDebug />
+{#if showDebug}
+  <CacheDebug />
+{/if}

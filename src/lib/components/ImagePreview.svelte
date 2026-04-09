@@ -320,7 +320,7 @@
       // Check staleness after await
       if (activePath !== entry.path) return;
       // Store in cache (fire-and-forget)
-      void imageCache.put('thumbnail', entry.path, blob, meta);
+      void imageCache.put('thumbnail', entry.path, blob, meta, entry.date.getTime());
       const blobUrl = URL.createObjectURL(blob);
       rawThumbnailUrl = blobUrl;
       thumbnailBlobUrl = blobUrl;
@@ -386,7 +386,7 @@
         const blob = await res.blob();
         if (abort.signal.aborted || activePath !== entry.path) return;
         // Store in cache (fire-and-forget)
-        void imageCache.put('full', entry.path, blob);
+        void imageCache.put('full', entry.path, blob, undefined, entry.date.getTime());
         autoCacheService.markCached(entry.path);
         const objectUrl = URL.createObjectURL(blob);
         rawObjectUrl = objectUrl;

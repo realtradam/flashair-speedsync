@@ -45,6 +45,9 @@ class AutoCacheService {
   /** The AbortController for the current background download. */
   private _currentAbort: AbortController | undefined;
 
+  /** Current download speed in bytes/sec. 0 when idle. */
+  private _downloadSpeed = 0;
+
   /** The image list to work through (newest first). */
   private _images: FlashAirFileEntry[] = [];
 
@@ -98,6 +101,11 @@ class AutoCacheService {
   /** Total number of images in the work queue. */
   get totalCount(): number {
     return this._images.length;
+  }
+
+  /** Current download speed in bytes/second. 0 when not downloading. */
+  get downloadSpeed(): number {
+    return this._downloadSpeed;
   }
 
   /** Check if a path has been confirmed fully cached. */
@@ -245,7 +253,7 @@ class AutoCacheService {
       if (reader === undefined) {
         const blob = await res.blob();
         if (abort.signal.aborted) return false;
-        void imageCache.put('full', image.path, blob);
+        void imageCache.put('full', image.path, blob, undefined, image.date.getTime());
         this._progressMap.set(image.path, 1);
         this._notify();
         return true;
@@ -253,6 +261,8 @@ class AutoCacheService {
 
       const chunks: Uint8Array[] = [];
       let received = 0;
+      let speedStartTime = performance.now();
+      let speedStartBytes = 0;
 
       while (true) {
         const { done, value } = await reader.read();
@@ -261,6 +271,17 @@ class AutoCacheService {
         received += value.byteLength;
         const progress = totalBytes > 0 ? received / totalBytes : 0;
         this._progressMap.set(image.path, progress);
+
+        // Calculate speed every ~500ms to avoid excessive jitter
+        const now = performance.now();
+        const elapsed = now - speedStartTime;
+        if (elapsed >= 500) {
+          const bytesInWindow = received - speedStartBytes;
+          this._downloadSpeed = Math.round(bytesInWindow / (elapsed / 1000));
+          speedStartTime = now;
+          speedStartBytes = received;
+        }
+
         this._notify();
       }
 
@@ -278,6 +299,7 @@ class AutoCacheService {
       return false;
     } finally {
       this._downloading = false;
+      this._downloadSpeed = 0;
       this._currentAbort = undefined;
     }
   }

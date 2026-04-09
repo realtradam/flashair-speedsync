@@ -1,0 +1,25 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+MOUNT_STATE_FILE="${PROJECT_DIR}/.sd-mount"
+
+if [ ! -f "$MOUNT_STATE_FILE" ]; then
+  echo "No SD card mount recorded. Nothing to unmount."
+  exit 0
+fi
+
+SD_MOUNT="$(cat "$MOUNT_STATE_FILE")"
+
+if mountpoint -q "$SD_MOUNT" 2>/dev/null; then
+  echo "Unmounting $SD_MOUNT ..."
+  sudo umount "$SD_MOUNT"
+  echo "Unmounted. Safe to remove the SD card."
+else
+  echo "$SD_MOUNT is not currently mounted."
+fi
+
+rm -f "$MOUNT_STATE_FILE"
+echo "Cleaned up mount state."

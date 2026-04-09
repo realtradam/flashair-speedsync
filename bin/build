@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Default SD card Windows drive letter and WSL mount point
+SD_DRIVE_LETTER="F"
+SD_MOUNT="/mnt/f"
+
+# Allow override via argument
+if [ "${1:-}" != "" ]; then
+  SD_MOUNT="$1"
+fi
+
+SD_TARGET="${SD_MOUNT}/speedsync"
+MOUNT_STATE_FILE="${PROJECT_DIR}/.sd-mount"
+
+cd "$PROJECT_DIR"
+
+echo "Building SpeedSync..."
+npm run build
+echo ""
+echo "Build complete: dist/"
+echo ""
+
+# Mount the SD card if not already mounted
+if ! mountpoint -q "$SD_MOUNT" 2>/dev/null; then
+  echo "SD card not mounted at $SD_MOUNT, mounting..."
+  sudo mkdir -p "$SD_MOUNT"
+  sudo mount -t drvfs "${SD_DRIVE_LETTER}:" "$SD_MOUNT" -o "uid=$(id -u),gid=$(id -g)"
+  echo "Mounted ${SD_DRIVE_LETTER}: at $SD_MOUNT"
+fi
+
+# Record the mount point so bin/unmount knows what to unmount
+echo "$SD_MOUNT" > "$MOUNT_STATE_FILE"
+
+echo "Deploying to $SD_TARGET ..."
+mkdir -p "$SD_TARGET"
+rsync -av --delete dist/ "$SD_TARGET/"
+echo ""
+echo "Deployed to $SD_TARGET"
+echo ""
+echo "Run 'bin/unmount' when ready to remove the SD card."

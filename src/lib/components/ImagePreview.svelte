@@ -44,7 +44,10 @@
   let lastPanY = 0;
 
   const MIN_ZOOM = 1;
-  const MAX_ZOOM = 10;
+  // Allow zooming up to 3× beyond native 1:1 pixel density.
+  // The effective CSS scale = baseScale * zoomLevel; zoomLevel=1 always means
+  // "fit".  MAX_ZOOM is recomputed per-image in clampZoom().
+  const ZOOM_PAST_NATIVE = 3;
 
   function resetZoom() {
     zoomLevel = 1;
@@ -59,16 +62,20 @@
       return;
     }
     if (containerW === 0 || containerH === 0) return;
-    const maxPanX = (containerW * (zoomLevel - 1)) / 2;
-    const maxPanY = (containerH * (zoomLevel - 1)) / 2;
+    // The rendered image size at the current zoom level.
+    const renderedW = imgNaturalW > 0 ? imgNaturalW * baseScale * zoomLevel : containerW * zoomLevel;
+    const renderedH = imgNaturalH > 0 ? imgNaturalH * baseScale * zoomLevel : containerH * zoomLevel;
+    const maxPanX = Math.max(0, (renderedW - containerW) / 2);
+    const maxPanY = Math.max(0, (renderedH - containerH) / 2);
     panX = Math.max(-maxPanX, Math.min(maxPanX, panX));
     panY = Math.max(-maxPanY, Math.min(maxPanY, panY));
   }
 
   function handleWheel(e: WheelEvent) {
     e.preventDefault();
+    const maxZoom = baseScale > 0 ? ZOOM_PAST_NATIVE / baseScale : 10;
     const delta = e.deltaY > 0 ? 0.9 : 1.1;
-    const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * delta));
+    const newZoom = Math.max(MIN_ZOOM, Math.min(maxZoom, zoomLevel * delta));
 
     if (containerEl !== undefined) {
       const rect = containerEl.getBoundingClientRect();
@@ -117,8 +124,9 @@
       const midX = (t0.clientX + t1.clientX) / 2;
       const midY = (t0.clientY + t1.clientY) / 2;
 
+      const maxZoom = baseScale > 0 ? ZOOM_PAST_NATIVE / baseScale : 10;
       const factor = dist / lastTouchDist;
-      const newZoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, zoomLevel * factor));
+      const newZoom = Math.max(MIN_ZOOM, Math.min(maxZoom, zoomLevel * factor));
 
       if (containerEl !== undefined) {
         const rect = containerEl.getBoundingClientRect();
@@ -160,6 +168,27 @@
       lastPanY = t.clientY;
     }
   }
+
+  // Native image dimensions (set once the full-res img element loads)
+  let imgNaturalW = $state(0);
+  let imgNaturalH = $state(0);
+
+  function handleImageLoad(e: Event) {
+    const img = e.currentTarget as HTMLImageElement;
+    imgNaturalW = img.naturalWidth;
+    imgNaturalH = img.naturalHeight;
+  }
+
+  /**
+   * The scale factor that makes the native-size image "fit" inside the
+   * container (same logic as object-contain).  When imgNatural* are not
+   * yet known we fall back to 1 so nothing explodes.
+   */
+  let baseScale = $derived(
+    imgNaturalW > 0 && imgNaturalH > 0 && containerW > 0 && containerH > 0
+      ? Math.min(containerW / imgNaturalW, containerH / imgNaturalH)
+      : 1
+  );
 
   // Track container size via ResizeObserver
   $effect(() => {
@@ -329,7 +358,7 @@
   let progressPercent = $derived(Math.round(progress * 100));
   let showThumbnail = $derived(fullObjectUrl === undefined && thumbnailBlobUrl !== undefined);
   let imageTransform = $derived(
-    `translate(${String(panX)}px, ${String(panY)}px) scale(${String(zoomLevel)})`
+    `translate(${String(panX)}px, ${String(panY)}px) scale(${String(baseScale * zoomLevel)})`
   );
 </script>
 
@@ -364,10 +393,14 @@
         <img
           src={fullObjectUrl}
           alt={file.filename}
-          class="max-w-full max-h-full object-contain will-change-transform"
+          class="will-change-transform shrink-0"
+          style:width={imgNaturalW > 0 ? `${String(imgNaturalW)}px` : 'auto'}
+          style:height={imgNaturalH > 0 ? `${String(imgNaturalH)}px` : 'auto'}
+          style:max-width="none"
           style:transform={imageTransform}
           style:transform-origin="center center"
           draggable="false"
+          onload={handleImageLoad}
         />
       {/key}
     {:else if showThumbnail}

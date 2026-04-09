@@ -37,7 +37,7 @@
 
 <div class="flex h-screen bg-base-200">
   <!-- Left: Image preview -->
-  <div class="flex-1 min-w-0 h-full">
+  <div class="flex-1 min-w-0 h-full overflow-hidden">
     {#if loading}
       <div class="flex items-center justify-center h-full">
         <span class="loading loading-spinner loading-lg"></span>

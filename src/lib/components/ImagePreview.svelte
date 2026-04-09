@@ -8,9 +8,8 @@
 
   let { file }: Props = $props();
 
-  let thumbnailUrl = $derived(
-    file !== undefined ? flashair.thumbnailUrl(file.path) : undefined,
-  );
+  let thumbnailBlobUrl = $state<string | undefined>(undefined);
+  let imageAspectRatio = $state<string>('3 / 2');
 
   let fullObjectUrl = $state<string | undefined>(undefined);
   let progress = $state(0);
@@ -25,6 +24,7 @@
    * add it as a tracked dependency and cause an infinite loop).
    */
   let rawObjectUrl: string | undefined;
+  let rawThumbnailUrl: string | undefined;
 
   $effect(() => {
     const currentFile = file;
@@ -33,6 +33,7 @@
       return;
     }
 
+    loadThumbnail(currentFile);
     loadFullImage(currentFile);
 
     return () => {
@@ -48,14 +49,44 @@
       URL.revokeObjectURL(rawObjectUrl);
       rawObjectUrl = undefined;
     }
+    if (rawThumbnailUrl !== undefined) {
+      URL.revokeObjectURL(rawThumbnailUrl);
+      rawThumbnailUrl = undefined;
+    }
     fullObjectUrl = undefined;
+    thumbnailBlobUrl = undefined;
+    imageAspectRatio = '3 / 2';
     progress = 0;
     downloading = false;
     loadError = undefined;
   }
 
+  async function loadThumbnail(entry: FlashAirFileEntry) {
+    const url = flashair.thumbnailUrl(entry.path);
+    if (url === undefined) return;
+
+    try {
+      const { blob, meta } = await flashair.fetchThumbnail(entry.path);
+      const blobUrl = URL.createObjectURL(blob);
+      rawThumbnailUrl = blobUrl;
+      thumbnailBlobUrl = blobUrl;
+
+      if (meta.width !== undefined && meta.height !== undefined && meta.width > 0 && meta.height > 0) {
+        imageAspectRatio = `${String(meta.width)} / ${String(meta.height)}`;
+      }
+    } catch {
+      // Thumbnail fetch failed — not critical, full image will load
+    }
+  }
+
   async function loadFullImage(entry: FlashAirFileEntry) {
-    cleanup();
+    if (rawObjectUrl !== undefined) {
+      URL.revokeObjectURL(rawObjectUrl);
+      rawObjectUrl = undefined;
+    }
+    fullObjectUrl = undefined;
+    progress = 0;
+    loadError = undefined;
 
     if (currentAbort !== undefined) {
       currentAbort.abort();
@@ -117,7 +148,7 @@
   }
 
   let progressPercent = $derived(Math.round(progress * 100));
-  let showThumbnail = $derived(fullObjectUrl === undefined && thumbnailUrl !== undefined);
+  let showThumbnail = $derived(fullObjectUrl === undefined && thumbnailBlobUrl !== undefined);
 </script>
 
 <div class="h-full flex items-center justify-center bg-base-300 relative">
@@ -150,12 +181,16 @@
         />
       {/key}
     {:else if showThumbnail}
-      <img
-        src={thumbnailUrl}
-        alt={file.filename}
-        class="max-w-full max-h-full object-contain image-rendering-pixelated"
-        style="image-rendering: pixelated;"
-      />
+      <div
+        class="w-full max-h-full overflow-hidden"
+        style:aspect-ratio={imageAspectRatio}
+      >
+        <img
+          src={thumbnailBlobUrl}
+          alt={file.filename}
+          class="w-full h-full object-cover blur-lg"
+        />
+      </div>
     {:else}
       <span class="loading loading-spinner loading-lg"></span>
     {/if}

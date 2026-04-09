@@ -438,7 +438,7 @@
 
 <!-- svelte-ignore a11y_no_static_element_interactions -->
 <div
-  class="h-full flex items-center justify-center bg-base-300 relative overflow-hidden touch-none"
+  class="h-full flex items-center justify-center bg-black relative overflow-hidden touch-none"
   bind:this={containerEl}
   onwheel={handleWheel}
 >
@@ -453,7 +453,7 @@
     </div>
   {:else}
     {#if downloading && progress < 1}
-      <div class="absolute inset-0 z-10 flex items-center justify-center bg-base-300/80 backdrop-blur-sm">
+      <div class="absolute inset-0 z-10 flex items-center justify-center bg-black/80 backdrop-blur-sm">
         <div class="bg-base-100 rounded-box p-4 shadow-xl max-w-xs w-full mx-4">
           <div class="flex items-center gap-2">
             <progress class="progress progress-primary flex-1" value={progressPercent} max="100"></progress>
@@ -463,7 +463,6 @@
       </div>
     {/if}
     {#if fullObjectUrl !== undefined}
-      {#key fullObjectUrl}
         <img
           src={fullObjectUrl}
           alt={file.filename}
@@ -476,7 +475,6 @@
           draggable="false"
           onload={handleImageLoad}
         />
-      {/key}
     {:else if showThumbnail}
       <div
         class="w-full max-h-full overflow-hidden"

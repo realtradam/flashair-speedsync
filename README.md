@@ -102,3 +102,35 @@ The fastest way to iterate:
 ```
 
 Accessible at `http://flashair/speedsync/index.html` when connected to the FlashAir WiFi.
+
+---
+
+## UI Guide
+
+### Layout
+
+The app uses a two-panel layout:
+
+- **Left panel** — Full-size image preview with pinch-to-zoom and pan support. Background is always solid black.
+- **Right panel** — Scrollable thumbnail list sorted newest-first. Shows a cache progress indicator (`cached/total`) and a status dot (pulsing when auto-caching is active).
+
+### Floating Action Button (FAB)
+
+A flower-style FAB in the bottom-right corner opens to reveal action buttons:
+
+| Icon | Color | Action |
+|---|---|---|
+| ☰ (hamburger) | Secondary | Opens/closes the FAB menu |
+| ↓ (download arrow) | Primary | Saves the currently selected photo to your device |
+| 👁 (eye) / 👁‍🗨 (eye-slash) | Accent (on) / Neutral (off) | **Auto-show new images** — when enabled, automatically switches the preview to the newest photo as it arrives from the camera |
+| ✕ (clear box) | Warning | Clears the local image cache and restarts background pre-caching |
+| ℹ (info) | Info | Toggles the cache debug overlay |
+| ☀/🌙 (sun/moon) | Secondary | Toggles between light (CMYK) and dark (Black) themes |
+
+### Automatic polling
+
+The app polls the FlashAir card every 1.5 seconds for new photos. When a new photo is detected:
+
+1. It appears at the top of the thumbnail list with a reveal animation
+2. Background pre-caching restarts to include the new image
+3. If **Auto-show new images** is enabled, the preview switches to the new photo immediately

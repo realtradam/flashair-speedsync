@@ -2,6 +2,7 @@
   import { flashair } from '../flashair';
   import type { FlashAirFileEntry } from '../flashair';
   import { imageCache } from '../cache';
+  import { autoCacheService } from '../cache';
 
   interface Props {
     file: FlashAirFileEntry | undefined;
@@ -251,6 +252,12 @@
         currentAbort.abort();
         currentAbort = undefined;
       }
+      // If we were downloading and got aborted (e.g. user navigated away),
+      // make sure to resume the auto-cache service.
+      if (downloading) {
+        downloading = false;
+        autoCacheService.resumeAfterUserDownload();
+      }
     };
   });
 
@@ -330,12 +337,14 @@
       fullObjectUrl = objectUrl;
       progress = 1;
       downloading = false;
+      autoCacheService.markCached(entry.path);
       return;
     }
 
     downloading = true;
     progress = 0;
     loadError = undefined;
+    autoCacheService.pauseForUserDownload();
 
     const url = flashair.fileUrl(entry.path);
     const totalBytes = entry.size;
@@ -352,11 +361,13 @@
         if (abort.signal.aborted) return;
         // Store in cache (fire-and-forget)
         void imageCache.put('full', entry.path, blob);
+        autoCacheService.markCached(entry.path);
         const objectUrl = URL.createObjectURL(blob);
         rawObjectUrl = objectUrl;
         fullObjectUrl = objectUrl;
         progress = 1;
         downloading = false;
+        autoCacheService.resumeAfterUserDownload();
         return;
       }
 
@@ -376,6 +387,7 @@
       const blob = new Blob(chunks);
       // Store in cache (fire-and-forget)
       void imageCache.put('full', entry.path, blob);
+      autoCacheService.markCached(entry.path);
       const objectUrl = URL.createObjectURL(blob);
       rawObjectUrl = objectUrl;
       fullObjectUrl = objectUrl;
@@ -386,6 +398,7 @@
     } finally {
       if (!abort.signal.aborted) {
         downloading = false;
+        autoCacheService.resumeAfterUserDownload();
       }
     }
   }

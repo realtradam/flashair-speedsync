@@ -34,6 +34,27 @@
   let containerW = $state(0);
   let containerH = $state(0);
 
+  // Native image dimensions (set once the full-res img element loads)
+  let imgNaturalW = $state(0);
+  let imgNaturalH = $state(0);
+
+  function handleImageLoad(e: Event) {
+    const img = e.currentTarget as HTMLImageElement;
+    imgNaturalW = img.naturalWidth;
+    imgNaturalH = img.naturalHeight;
+  }
+
+  /**
+   * The scale factor that makes the native-size image "fit" inside the
+   * container (same logic as object-contain).  When imgNatural* are not
+   * yet known we fall back to 1 so nothing explodes.
+   */
+  let baseScale = $derived(
+    imgNaturalW > 0 && imgNaturalH > 0 && containerW > 0 && containerH > 0
+      ? Math.min(containerW / imgNaturalW, containerH / imgNaturalH)
+      : 1
+  );
+
   // Touch tracking for pinch-to-zoom and pan
   let lastTouchDist = 0;
   let lastTouchMidX = 0;
@@ -169,27 +190,6 @@
     }
   }
 
-  // Native image dimensions (set once the full-res img element loads)
-  let imgNaturalW = $state(0);
-  let imgNaturalH = $state(0);
-
-  function handleImageLoad(e: Event) {
-    const img = e.currentTarget as HTMLImageElement;
-    imgNaturalW = img.naturalWidth;
-    imgNaturalH = img.naturalHeight;
-  }
-
-  /**
-   * The scale factor that makes the native-size image "fit" inside the
-   * container (same logic as object-contain).  When imgNatural* are not
-   * yet known we fall back to 1 so nothing explodes.
-   */
-  let baseScale = $derived(
-    imgNaturalW > 0 && imgNaturalH > 0 && containerW > 0 && containerH > 0
-      ? Math.min(containerW / imgNaturalW, containerH / imgNaturalH)
-      : 1
-  );
-
   // Track container size via ResizeObserver
   $effect(() => {
     const el = containerEl;
@@ -233,6 +233,8 @@
     resetZoom();
 
     // Clear stale state synchronously before async loads
+    imgNaturalW = 0;
+    imgNaturalH = 0;
     if (rawThumbnailUrl !== undefined) {
       URL.revokeObjectURL(rawThumbnailUrl);
       rawThumbnailUrl = undefined;
@@ -263,6 +265,8 @@
     fullObjectUrl = undefined;
     thumbnailBlobUrl = undefined;
     imageAspectRatio = '3 / 2';
+    imgNaturalW = 0;
+    imgNaturalH = 0;
     progress = 0;
     downloading = false;
     loadError = undefined;

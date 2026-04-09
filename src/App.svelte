@@ -13,6 +13,21 @@
   let isDark = $state(false);
   let deleting = $state(false);
   let showDeleteConfirm = $state(false);
+  let isAutoCaching = $state(false);
+  let cachedCount = $state(0);
+  let totalCount = $state(0);
+
+  $effect(() => {
+    const unsubscribe = autoCacheService.subscribe(() => {
+      isAutoCaching = autoCacheService.isActive;
+      cachedCount = autoCacheService.cachedCount;
+      totalCount = autoCacheService.totalCount;
+    });
+    isAutoCaching = autoCacheService.isActive;
+    cachedCount = autoCacheService.cachedCount;
+    totalCount = autoCacheService.totalCount;
+    return unsubscribe;
+  });
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'black' : 'cmyk');
@@ -118,8 +133,11 @@
 
   <!-- Right: Image list -->
 <div class="w-36 lg:w-40 shrink-0 border-l border-base-300 flex flex-col">
-    <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0">
-      <span class="text-sm font-semibold">Photos ({images.length})</span>
+    <div class="px-3 py-2 bg-base-100 border-b border-base-300 shrink-0 flex items-center overflow-hidden">
+      <span class="text-xs font-semibold whitespace-nowrap truncate">Photos {cachedCount}/{totalCount > 0 ? totalCount : images.length}</span>
+      {#if isAutoCaching}
+        <span class="loading loading-spinner loading-xs ml-1 shrink-0"></span>
+      {/if}
     </div>
     <div class="flex-1 min-h-0">
       <ImageList {images} selectedPath={selectedFile?.path} onSelect={selectImage} />

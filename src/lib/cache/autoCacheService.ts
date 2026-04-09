@@ -76,6 +76,21 @@ class AutoCacheService {
     return this._progressMap.get(path);
   }
 
+  /** Whether the service is actively caching (running and not finished). */
+  get isActive(): boolean {
+    return this._running && (this._downloading || this._nextIndex < this._images.length);
+  }
+
+  /** Number of images confirmed cached so far. */
+  get cachedCount(): number {
+    return this._cachedPaths.size;
+  }
+
+  /** Total number of images in the work queue. */
+  get totalCount(): number {
+    return this._images.length;
+  }
+
   /** Check if a path has been confirmed fully cached. */
   isCached(path: string): boolean {
     return this._cachedPaths.has(path);

@@ -33,6 +33,14 @@
       return;
     }
 
+    // Clear stale state synchronously before async loads
+    if (rawThumbnailUrl !== undefined) {
+      URL.revokeObjectURL(rawThumbnailUrl);
+      rawThumbnailUrl = undefined;
+    }
+    thumbnailBlobUrl = undefined;
+    imageAspectRatio = '3 / 2';
+
     loadThumbnail(currentFile);
     loadFullImage(currentFile);
 

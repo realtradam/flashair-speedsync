@@ -7,3 +7,26 @@ html, body {
   touch-action: pan-x pan-y;
   overscroll-behavior: none;
 }
+
+/*
+ * Reveal animation for newly detected sidebar images.
+ * Items use a CSS keyframe animation: start at max-height 0 (content clipped,
+ * not stretched) and grow to full natural height. The large max-height target
+ * ensures any item fits; the element collapses to its intrinsic height once done.
+ */
+.image-reveal {
+  overflow: hidden;
+}
+
+.image-reveal-enter {
+  animation: reveal-grow 600ms ease-out forwards;
+}
+
+@keyframes reveal-grow {
+  from {
+    max-height: 0;
+  }
+  to {
+    max-height: 500px;
+  }
+}

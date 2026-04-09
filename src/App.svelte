@@ -1,5 +1,6 @@
 <script lang="ts">
   import { flashair } from './lib/flashair';
+  import { pollService } from './lib/flashair';
   import type { FlashAirFileEntry } from './lib/flashair';
   import { imageCache } from './lib/cache';
   import { autoCacheService } from './lib/cache';
@@ -16,12 +17,29 @@
   let isAutoCaching = $state(false);
   let cachedCount = $state(0);
   let totalCount = $state(0);
+  let newImagePaths = $state(new Set<string>());
+
+  // Wire the auto-cache service to do a poll check between each download.
+  // This pauses the interval during auto-caching and uses checkOnce() instead.
+  autoCacheService.onBetweenDownloads = async () => {
+    await pollService.checkOnce();
+  };
+
+  function startAutoCacheWithPollPause(imageList: FlashAirFileEntry[]) {
+    pollService.pause();
+    autoCacheService.start(imageList);
+  }
 
   $effect(() => {
     const unsubscribe = autoCacheService.subscribe(() => {
       isAutoCaching = autoCacheService.isActive;
       cachedCount = autoCacheService.cachedCount;
       totalCount = autoCacheService.totalCount;
+
+      // When auto-caching finishes, resume the poll interval
+      if (!autoCacheService.isActive) {
+        pollService.resume();
+      }
     });
     isAutoCaching = autoCacheService.isActive;
     cachedCount = autoCacheService.cachedCount;
@@ -33,17 +51,43 @@
     document.documentElement.setAttribute('data-theme', isDark ? 'black' : 'cmyk');
   });
 
+  $effect(() => {
+    const unsubscribe = pollService.onNewImages((detected) => {
+      // Mark new paths for animation
+      const freshPaths = new Set(newImagePaths);
+      for (const img of detected) {
+        freshPaths.add(img.path);
+      }
+      newImagePaths = freshPaths;
+
+      // Prepend new images (they are already sorted newest-first from listAllImages)
+      images = [...detected, ...images];
+
+      // Feed new images into auto-cache service
+      autoCacheService.stop();
+      startAutoCacheWithPollPause(images);
+
+      // Auto-select the newest if nothing was selected
+      if (selectedFile === undefined && images.length > 0) {
+        selectedFile = images[0];
+      }
+    });
+    return unsubscribe;
+  });
+
   async function loadAllImages() {
     loading = true;
     error = undefined;
     autoCacheService.stop();
+    pollService.stop();
     try {
       images = await flashair.listAllImages('/DCIM');
       if (images.length > 0 && selectedFile === undefined) {
         selectedFile = images[0];
       }
+      pollService.start(images);
       if (images.length > 0) {
-        autoCacheService.start(images);
+        startAutoCacheWithPollPause(images);
       }
     } catch (e) {
       error = e instanceof Error ? e.message : String(e);
@@ -74,6 +118,7 @@
       void imageCache.delete('thumbnail', fileToDelete.path);
       void imageCache.delete('full', fileToDelete.path);
       autoCacheService.removeImage(fileToDelete.path);
+      pollService.removeKnownPath(fileToDelete.path);
       // Remove from list and select next image
       const idx = images.findIndex((f) => f.path === fileToDelete.path);
       images = images.filter((f) => f.path !== fileToDelete.path);
@@ -95,12 +140,18 @@
     showDeleteConfirm = false;
   }
 
+  function handleAnimationDone(path: string) {
+    const updated = new Set(newImagePaths);
+    updated.delete(path);
+    newImagePaths = updated;
+  }
+
   async function clearAllCache() {
     autoCacheService.stop();
     await imageCache.clear();
     // Restart auto-caching from scratch
     if (images.length > 0) {
-      autoCacheService.start(images);
+      startAutoCacheWithPollPause(images);
     }
   }
 </script>
@@ -140,7 +191,7 @@
       {/if}
     </div>
     <div class="flex-1 min-h-0">
-      <ImageList {images} selectedPath={selectedFile?.path} onSelect={selectImage} />
+      <ImageList {images} selectedPath={selectedFile?.path} onSelect={selectImage} {newImagePaths} onAnimationDone={handleAnimationDone} />
     </div>
   </div>
 </div>

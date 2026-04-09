@@ -7,9 +7,15 @@
     images: FlashAirFileEntry[];
     selectedPath: string | undefined;
     onSelect: (file: FlashAirFileEntry) => void;
+    newImagePaths: Set<string>;
+    onAnimationDone: (path: string) => void;
   }
 
-  let { images, selectedPath, onSelect }: Props = $props();
+  let { images, selectedPath, onSelect, newImagePaths, onAnimationDone }: Props = $props();
+
+  function handleRevealEnd(path: string) {
+    onAnimationDone(path);
+  }
 </script>
 
 <div class="h-full overflow-y-auto bg-base-100">
@@ -22,7 +28,11 @@
       {#each images as file (file.path)}
         {@const thumbUrl = flashair.thumbnailUrl(file.path)}
         {@const isSelected = file.path === selectedPath}
-        <li>
+        {@const isNew = newImagePaths.has(file.path)}
+        <li
+          class="image-reveal overflow-hidden {isNew ? 'image-reveal-enter' : ''}"
+          onanimationend={() => handleRevealEnd(file.path)}
+        >
           <button
             class="flex flex-col w-full rounded-lg p-1.5 text-left transition-colors {isSelected
               ? 'bg-primary text-primary-content'

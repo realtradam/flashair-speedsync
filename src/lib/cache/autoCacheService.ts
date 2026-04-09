@@ -2,15 +2,6 @@ import { flashair } from '../flashair';
 import type { FlashAirFileEntry } from '../flashair';
 import { imageCache } from './imageCache';
 
-/**
- * Reactive state for the auto-cache background service.
- *
- * Uses Svelte 5 $state runes via the .svelte.ts convention — but since this
- * is a plain .ts file consumed by Svelte components, we store reactive values
- * in a simple mutable object that components can poll or subscribe to via
- * a wrapper.  We use a manual callback approach instead.
- */
-
 /** Progress of a single image being auto-cached (0–1). */
 export interface AutoCacheProgress {
   readonly path: string;
@@ -20,14 +11,26 @@ export interface AutoCacheProgress {
 type Listener = () => void;
 
 /**
+ * Callback invoked between each auto-cache download.
+ * The auto-cache service will wait for this to resolve before starting
+ * the next download. Used to give the poll service a chance to check
+ * for new images without HTTP contention.
+ */
+type BetweenDownloadsHook = () => Promise<void>;
+
+/**
  * Singleton auto-cache service.
  *
- * Call `start(images)` after loading the image list.  The service will
+ * Call `start(images)` after loading the image list. The service will
  * iterate newest-first, skip already-cached images, and download full-size
  * images in the background one at a time.
  *
  * When a user-initiated download is active, call `pauseForUserDownload()`
  * / `resumeAfterUserDownload()` to yield bandwidth.
+ *
+ * Set `onBetweenDownloads` to a hook that runs between each cached image.
+ * This gives external services (e.g. the poll service) a window to use the
+ * FlashAir HTTP connection without contention.
  */
 class AutoCacheService {
   /** Map from image path → download progress 0–1. Only contains entries being cached. */
@@ -56,6 +59,12 @@ class AutoCacheService {
 
   /** Listeners notified on every progress change. */
   private _listeners = new Set<Listener>();
+
+  /**
+   * Optional hook called between downloads. The service awaits this before
+   * starting the next download.
+   */
+  onBetweenDownloads: BetweenDownloadsHook | undefined;
 
   /** Subscribe to state changes. Returns an unsubscribe function. */
   subscribe(fn: Listener): () => void {
@@ -188,8 +197,16 @@ class AutoCacheService {
         continue;
       }
 
-      // Not cached — download it
-      if (this._userDownloading || !this._running) return;
+      // Not cached — run the between-downloads hook (e.g. poll check)
+      if (this.onBetweenDownloads !== undefined) {
+        try {
+          await this.onBetweenDownloads();
+        } catch {
+          // Hook failed — continue anyway
+        }
+        // Re-check state after the async hook
+        if (!this._running || this._userDownloading) return;
+      }
 
       const success = await this._downloadImage(image);
       if (success) {

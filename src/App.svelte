@@ -1,6 +1,7 @@
 <script lang="ts">
   import { flashair } from './lib/flashair';
   import type { FlashAirFileEntry } from './lib/flashair';
+  import { imageCache } from './lib/cache';
   import ImageList from './lib/components/ImageList.svelte';
   import ImagePreview from './lib/components/ImagePreview.svelte';
 
@@ -9,6 +10,8 @@
   let loading = $state(false);
   let error = $state<string | undefined>(undefined);
   let isDark = $state(false);
+  let deleting = $state(false);
+  let showDeleteConfirm = $state(false);
 
   $effect(() => {
     document.documentElement.setAttribute('data-theme', isDark ? 'black' : 'cmyk');
@@ -32,6 +35,43 @@
 
   function selectImage(file: FlashAirFileEntry) {
     selectedFile = file;
+  }
+
+  function requestDelete() {
+    if (selectedFile === undefined) return;
+    showDeleteConfirm = true;
+  }
+
+  async function confirmDelete() {
+    showDeleteConfirm = false;
+    if (selectedFile === undefined) return;
+
+    const fileToDelete = selectedFile;
+    deleting = true;
+    try {
+      await flashair.deleteFile(fileToDelete.path);
+      // Remove from cache
+      void imageCache.delete('thumbnail', fileToDelete.path);
+      void imageCache.delete('full', fileToDelete.path);
+      // Remove from list and select next image
+      const idx = images.findIndex((f) => f.path === fileToDelete.path);
+      images = images.filter((f) => f.path !== fileToDelete.path);
+      if (images.length === 0) {
+        selectedFile = undefined;
+      } else if (idx >= images.length) {
+        selectedFile = images[images.length - 1];
+      } else {
+        selectedFile = images[idx];
+      }
+    } catch (e) {
+      error = `Delete failed: ${e instanceof Error ? e.message : String(e)}`;
+    } finally {
+      deleting = false;
+    }
+  }
+
+  function cancelDelete() {
+    showDeleteConfirm = false;
   }
 </script>
 
@@ -94,6 +134,16 @@
       </svg>
     {/if}
   </button>
+  <!-- Delete -->
+  <button class="btn btn-lg btn-circle btn-error" onclick={() => requestDelete()} disabled={selectedFile === undefined || deleting}>
+    {#if deleting}
+      <span class="loading loading-spinner loading-sm"></span>
+    {:else}
+      <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
+        <path stroke-linecap="round" stroke-linejoin="round" d="m14.74 9-.346 9m-4.788 0L9.26 9m9.968-3.21c.342.052.682.107 1.022.166m-1.022-.165L18.16 19.673a2.25 2.25 0 0 1-2.244 2.077H8.084a2.25 2.25 0 0 1-2.244-2.077L4.772 5.79m14.456 0a48.108 48.108 0 0 0-3.478-.397m-12 .562c.34-.059.68-.114 1.022-.165m0 0a48.11 48.11 0 0 1 3.478-.397m7.5 0v-.916c0-1.18-.91-2.164-2.09-2.201a51.964 51.964 0 0 0-3.32 0c-1.18.037-2.09 1.022-2.09 2.201v.916m7.5 0a48.667 48.667 0 0 0-7.5 0" />
+      </svg>
+    {/if}
+  </button>
   <!-- Refresh -->
   <button class="btn btn-lg btn-circle btn-secondary" onclick={() => loadAllImages()}>
     <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" stroke-width="1.5" stroke="currentColor" class="size-5">
@@ -104,3 +154,20 @@
     </svg>
   </button>
 </div>
+
+<!-- Delete confirmation modal -->
+{#if showDeleteConfirm && selectedFile !== undefined}
+  <dialog class="modal modal-open">
+    <div class="modal-box">
+      <h3 class="text-lg font-bold">Delete photo?</h3>
+      <p class="py-4">This will permanently delete <strong>{selectedFile.filename}</strong> from the SD card.</p>
+      <div class="modal-action">
+        <button class="btn" onclick={() => cancelDelete()}>Cancel</button>
+        <button class="btn btn-error" onclick={() => void confirmDelete()}>Delete</button>
+      </div>
+    </div>
+    <form method="dialog" class="modal-backdrop">
+      <button onclick={() => cancelDelete()}>close</button>
+    </form>
+  </dialog>
+{/if}

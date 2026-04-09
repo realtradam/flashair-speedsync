@@ -197,6 +197,28 @@ export const flashair = {
     return { blob, meta };
   },
   /**
+   * Delete a file from the FlashAir card.
+   * Requires UPLOAD=1 in the CONFIG file.
+   * @param path - Absolute path on the card, e.g. "/DCIM/100__TSB/DSC_0001.JPG"
+   */
+  async deleteFile(path: string): Promise<void> {
+    const base = getBaseUrl();
+    const res = await fetch(`${base}/upload.cgi?DEL=${path}`);
+    if (!res.ok) {
+      if (res.status === 404) {
+        throw new Error(
+          'File deletion is not enabled. Add UPLOAD=1 to /SD_WLAN/CONFIG on the SD card and restart the FlashAir.'
+        );
+      }
+      throw new Error(`deleteFile failed: ${res.status} ${res.statusText}`);
+    }
+    const text = await res.text();
+    if (text.trim() !== 'SUCCESS') {
+      throw new Error(`deleteFile failed: card returned ${text.trim()}`);
+    }
+  },
+
+  /**
    * Recursively list all image files on the card starting from a root directory.
    * Returns files sorted by date, newest first.
    */

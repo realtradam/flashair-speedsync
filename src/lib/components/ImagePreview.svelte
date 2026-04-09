@@ -322,11 +322,7 @@
     const abort = new AbortController();
     currentAbort = abort;
 
-    downloading = true;
-    progress = 0;
-    loadError = undefined;
-
-    // Try cache first
+    // Try cache first — before setting downloading=true to avoid flicker
     const cached = await imageCache.get('full', entry.path);
     if (cached !== undefined && !abort.signal.aborted) {
       const objectUrl = URL.createObjectURL(cached.blob);
@@ -336,6 +332,10 @@
       downloading = false;
       return;
     }
+
+    downloading = true;
+    progress = 0;
+    loadError = undefined;
 
     const url = flashair.fileUrl(entry.path);
     const totalBytes = entry.size;

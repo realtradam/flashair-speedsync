@@ -1,0 +1,4 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+sudo mount -t drvfs F: /mnt/f -o uid=$(id -u),gid=$(id -g)
